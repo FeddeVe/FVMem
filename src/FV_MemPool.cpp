@@ -14,6 +14,7 @@ FV::MemPool::~MemPool(){
 }
 
 void FV::MemPool::init(uint32_t maxGB){
+
  uint64_t vectorSize = maxGB * 1024;
     vectorSize *= 1024;
     vectorSize *= 1024;
@@ -72,7 +73,21 @@ void FV::MemPool::maintance(void *ptr)
     
 }
 
-
+std::vector<FV::MemStats> FV::MemPool::getStats()
+{
+    std::vector<FV::MemStats> ret;
+    ret.resize(m_memBlocks.size());
+    for(size_t i = 0; i < ret.size(); i++){
+        if(m_memBlocks[i].inUse()){
+        ret[i].poolID = i;
+        ret[i].poolSize = m_memBlocks[i].getSize();
+        ret[i].poolStart = m_memBlocks[i].getStart();
+        ret[i].maxFreeSize = m_memBlocks[i].getMaxFreeSize();
+        m_memBlocks[i].getAllocations(ret[i].allocations);
+        }
+    } 
+    return ret;
+}
 
 void *FV::MemPool::place(uint64_t size){
    // if(!isInitialized){

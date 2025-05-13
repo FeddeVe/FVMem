@@ -1,7 +1,7 @@
 #include "FV_Mem.h"
 
 FV::MemBlock::MemBlock()
-    : m_size{0}, m_buffer{nullptr}, m_lastInsertHDR{nullptr}
+    : m_size{0}, m_buffer{nullptr}, m_lastInsertHDR{nullptr}, m_maintanceNeeded{false}
 {
 }
 
@@ -12,6 +12,7 @@ FV::MemBlock::~MemBlock()
 
 bool FV::MemBlock::init(uint16_t index, uint64_t blockSize)
 {
+    std::lock_guard<std::mutex> lock(m_maintanceMutex);
     m_index = index;
     m_size = blockSize;
     m_buffer = std::malloc(m_size);
@@ -27,12 +28,14 @@ bool FV::MemBlock::init(uint16_t index, uint64_t blockSize)
         m_buffer = std::malloc(m_size);
     }
         */
-       if(m_buffer==nullptr){
+    if (m_buffer == nullptr)
+    {
         return false;
-       }
+    }
     m_start = reinterpret_cast<uintptr_t>(&m_buffer);
     m_maxFreeSize = m_size;
-    FV::AllocHeader *hdr = new (m_buffer) AllocHeader(m_maxFreeSize);
+    FV::AllocHeader *hdr = new (m_buffer) AllocHeader(0);
+    hdr->incUseCount();
     m_lastInsertHDR = hdr;
     return true;
 }
@@ -69,24 +72,38 @@ void *FV::MemBlock::place(uint64_t size)
         return nullptr;
     }
     //  displayStatus();
+    if (!m_buffer)
+    {
+        return nullptr;
+    }
+
     void *retPTR = nullptr;
 
     if (size <= (m_maxFreeSize - sizeof(FV::AllocHeader)))
     {
         uint64_t index = m_start;
         void *tmpPTR = m_lastInsertHDR;
-        if(tmpPTR == nullptr){
+        if (tmpPTR == nullptr)
+        {
             tmpPTR = m_buffer;
         }
         void *end = static_cast<char *>(m_buffer) + m_size;
         while (tmpPTR < end)
         {
             FV::AllocHeader *hdr = static_cast<FV::AllocHeader *>(tmpPTR);
+            if (tmpPTR == m_buffer)
+            {
+                if ((hdr->getUseCount() == 1) && (hdr->getSize() == 0))
+                {
+                    hdr->resetUseCount();
+                    hdr->setSize(m_size);
+                }
+            }
             if ((hdr->getUseCount() == 0) && (hdr->getSize() >= size))
             {
                 retPTR = static_cast<char *>(tmpPTR) + sizeof(FV::AllocHeader);
                 // creating a new HDR for the next block
-                void *nextHdrPtr = static_cast<char *>(tmpPTR) + size; 
+                void *nextHdrPtr = static_cast<char *>(tmpPTR) + size;
 
                 uint64_t sizeAvail = hdr->getSize() - size;
                 if (sizeAvail < sizeof(FV::AllocHeader))
@@ -109,9 +126,9 @@ void *FV::MemBlock::place(uint64_t size)
                 hdr->incUseCount();
                 hdr->setSize(size);
 
-              //  std::cout << "Placing memory size : " << size << " at " << retPTR << "with header " << tmpPTR; 
+                //  std::cout << "Placing memory size : " << size << " at " << retPTR << "with header " << tmpPTR;
                 displayStatus();
-
+                m_maintanceNeeded = true;
                 return retPTR;
                 // return tmp_hdr + sizeofAllocHeader;
                 int bp = 0;
@@ -122,6 +139,12 @@ void *FV::MemBlock::place(uint64_t size)
         }
     }
     return nullptr;
+}
+
+void FV::MemBlock::PTRDeleted()
+{
+    std::lock_guard<std::mutex> lock(m_maintanceMutex);
+    m_maintanceNeeded = true;
 }
 
 bool FV::MemBlock::isIn(void *ptr)
@@ -141,7 +164,10 @@ void FV::MemBlock::maintance()
     // Combining free blocks with usecount 0;
     // first get a block with usecount 0;
     // then get the next block, if usecount == 0, add the size to the freesize else break the inner loop
-
+    if (!m_buffer)
+    {
+        return;
+    }
     m_lastInsertHDR = nullptr;
     uint64_t maxFreeSize = 0;
     void *tmpPTR = m_buffer;
@@ -149,10 +175,18 @@ void FV::MemBlock::maintance()
     while (tmpPTR < endPTR)
     {
         FV::AllocHeader *hdr = static_cast<FV::AllocHeader *>(tmpPTR);
-
+        if (tmpPTR == m_buffer)
+        {
+            if ((hdr->getUseCount() == 1) && (hdr->getSize() == 0))
+            {
+                //buffer is created, nothing done with it, return from maintance
+                return;
+            }
+        }
         if (hdr->getUseCount() == 0)
         {
-            if(!m_lastInsertHDR){
+            if (!m_lastInsertHDR)
+            {
                 m_lastInsertHDR = hdr;
             }
             uint64_t freeSize = hdr->getSize();
@@ -193,6 +227,23 @@ void FV::MemBlock::maintance()
     displayStatus();
 }
 
+void FV::MemBlock::getAllocations(std::vector<FV::AllocStats> &alloc)
+{
+    std::lock_guard<std::mutex> lock(m_maintanceMutex);
+    alloc.clear();
+    void *tmpPTR = m_buffer;
+    void *endPTR = static_cast<char *>(m_buffer) + m_size;
+    while (tmpPTR < endPTR)
+    {
+        FV::AllocHeader *hdrPTR = static_cast<FV::AllocHeader *>(tmpPTR);
+        FV::AllocStats hdrTable;
+        hdrTable.PTR = reinterpret_cast<uintptr_t>(&tmpPTR);
+        hdrTable.size = hdrPTR->getSize();
+        hdrTable.useCount = hdrPTR->getUseCount();
+        alloc.push_back(hdrTable);
+    }
+}
+
 void FV::MemBlock::displayStatus()
 {
     /*
@@ -208,5 +259,4 @@ void FV::MemBlock::displayStatus()
     }
     std::cout << "---- END OF MEMBLOCK STATUS REPORT : " << std::endl;
     */
-    	
 }
