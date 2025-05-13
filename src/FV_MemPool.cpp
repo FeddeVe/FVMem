@@ -3,11 +3,15 @@
 #include <chrono>
 
 FV::MemPool::MemPool()
+    : isInitialized{false}
 {
-   
+    std::cout <<"Mempool created" <<std::endl;
+ init(16);
 }
 
-FV::MemPool::~MemPool(){}
+FV::MemPool::~MemPool(){
+    std::cout <<"Mempool destroyed" <<std::endl;
+}
 
 void FV::MemPool::init(uint32_t maxGB){
  uint64_t vectorSize = maxGB * 1024;
@@ -16,6 +20,7 @@ void FV::MemPool::init(uint32_t maxGB){
     vectorSize = vectorSize / FV::C_DefaultBlockSize;
    // m_memBlocks.resize(vectorSize);
     maintance();
+    isInitialized = true;
 }
 
 void FV::MemPool::maintance(){
@@ -70,9 +75,13 @@ void FV::MemPool::maintance(void *ptr)
 
 
 void *FV::MemPool::place(uint64_t size){
+   // if(!isInitialized){
+   //     return malloc(size);
+   // }
+   
     for(size_t i = 0; i < m_memBlocks.size(); i++){
         void *ptr = m_memBlocks[i].place(size);
-        if(ptr != nullptr){
+        if(ptr != nullptr){ 
             return ptr;
         }         
     }

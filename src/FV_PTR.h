@@ -63,7 +63,9 @@ namespace FV
                     // decrease the reference counter for the previously pointed location
                     m_allocHeader->decUseCount(); 
                     if(m_allocHeader->getUseCount() == 0){
-                        delete m_ptr;
+                        //delete does nothing, usecount 0 will release it's block and give it to someone else
+                        //delete m_ptr;
+                        
                     }
                 }
                 // reference new memory location
@@ -81,7 +83,8 @@ namespace FV
         {
             m_allocHeader->decUseCount();
             if(m_allocHeader->getUseCount() == 0){
-                delete m_ptr;
+                //delete does nothing, usecount 0 will release it's block and give it to someone else
+                //delete m_ptr;
             }        
         }
 

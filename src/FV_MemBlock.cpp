@@ -109,7 +109,9 @@ void *FV::MemBlock::place(uint64_t size)
                 hdr->incUseCount();
                 hdr->setSize(size);
 
+              //  std::cout << "Placing memory size : " << size << " at " << retPTR << "with header " << tmpPTR; 
                 displayStatus();
+
                 return retPTR;
                 // return tmp_hdr + sizeofAllocHeader;
                 int bp = 0;
@@ -205,5 +207,6 @@ void FV::MemBlock::displayStatus()
         tmpPTR = static_cast<char *>(tmpPTR) + hdr->getSize();
     }
     std::cout << "---- END OF MEMBLOCK STATUS REPORT : " << std::endl;
-    	*/
+    */
+    	
 }
